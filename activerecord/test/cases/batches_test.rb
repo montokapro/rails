@@ -4,9 +4,10 @@ require "cases/helper"
 require "models/comment"
 require "models/post"
 require "models/subscriber"
+require "models/name"
 
 class EachTest < ActiveRecord::TestCase
-  fixtures :posts, :subscribers
+  fixtures :posts, :subscribers, :names
 
   def setup
     @posts = Post.order("id asc")
@@ -65,6 +66,22 @@ class EachTest < ActiveRecord::TestCase
     assert_queries(6) do
       Post.select("id, title, type").find_each(batch_size: 2) do |post|
         assert_kind_of Post, post
+      end
+    end
+  end
+
+  def test_each_should_raise_if_select_is_set_without_by
+    assert_raise(ActiveModel::MissingAttributeError) do
+      Name.select(:id).find_each(batch_size: 1, by: :initials) { |post|
+        flunk "should not call this block"
+      }
+    end
+  end
+
+  def test_each_should_execute_if_by_is_in_select
+    assert_queries(4) do
+      Name.select("initials, first_name, last_name").find_each(batch_size: 2, by: :initials) do |name|
+        assert_kind_of Name, name
       end
     end
   end
@@ -134,6 +151,24 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
+  def test_find_in_batches_should_start_from_the_start_option_with_by
+    assert_queries(6) do
+      Name.find_in_batches(batch_size: 1, start: "ac", by: :initials) do |batch|
+        assert_kind_of Array, batch
+        assert_kind_of Name, batch.first
+      end
+    end
+  end
+
+  def test_find_in_batches_should_end_at_the_finish_option_with_by
+    assert_queries(6) do
+      Name.find_in_batches(batch_size: 1, finish: "ca", by: :initials) do |batch|
+        assert_kind_of Array, batch
+        assert_kind_of Name, batch.first
+      end
+    end
+  end
+
   def test_find_in_batches_shouldnt_execute_query_unless_needed
     assert_queries(2) do
       Post.find_in_batches(batch_size: @total) { |batch| assert_kind_of Array, batch }
@@ -167,6 +202,17 @@ class EachTest < ActiveRecord::TestCase
   def test_each_should_raise_if_order_is_invalid
     assert_raise(ArgumentError) do
       Post.select(:title).find_each(batch_size: 1, order: :invalid) { |post|
+        flunk "should not call this block"
+      }
+    end
+  end
+
+  def test_each_should_raise_if_by_is_missing
+    assert_raise(ArgumentError) do
+      Post.select(:title).find_each(batch_size: 1, by: nil) { |post|
+        flunk "should not call this block"
+      }
+      Post.select(:title).find_each(batch_size: 1, by: "") { |post|
         flunk "should not call this block"
       }
     end
@@ -265,6 +311,27 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
+  def test_find_in_batches_should_use_supplied_column_as_iteration_key
+    initials_order_names = Name.order("initials asc")
+    start_initials = initials_order_names.second.initials
+
+    names = []
+    Name.find_in_batches(batch_size: 1, start: start_initials, by: :initials) do |batch|
+      names.concat(batch)
+    end
+
+    assert_equal initials_order_names[1..-1].map(&:initials), names.map(&:initials)
+  end
+
+  def test_find_in_batches_should_use_supplied_column_as_iteration_key_when_start_is_not_specified
+    assert_queries(Name.count + 1) do
+      Name.find_in_batches(batch_size: 1, by: :initials) do |batch|
+        assert_kind_of Array, batch
+        assert_kind_of Name, batch.first
+      end
+    end
+  end
+
   def test_find_in_batches_should_return_an_enumerator
     enum = nil
     assert_no_queries do
@@ -299,6 +366,7 @@ class EachTest < ActiveRecord::TestCase
 
     assert_equal limit, total
   end
+
 
   def test_in_batches_should_not_execute_any_query
     assert_no_queries do
@@ -511,6 +579,27 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
+  def test_in_batches_should_use_supplied_column_as_iteration_key
+    initials_order_names = Name.order("initials asc")
+    start_initials = initials_order_names.second.initials
+
+    names = []
+    Name.in_batches(of: 1, start: start_initials, by: :initials) do |relation|
+      names.concat(relation)
+    end
+
+    assert_equal initials_order_names[1..-1].map(&:initials), names.map(&:initials)
+  end
+
+  def test_in_batches_should_use_supplied_column_as_iteration_key_when_start_is_not_specified
+    assert_queries(Name.count + 1) do
+      Name.in_batches(of: 1, load: true, by: :initials) do |relation|
+        assert_kind_of ActiveRecord::Relation, relation
+        assert_kind_of Name, relation.first
+      end
+    end
+  end
+
   def test_in_batches_should_return_an_enumerator
     enum = nil
     assert_no_queries do
@@ -522,6 +611,17 @@ class EachTest < ActiveRecord::TestCase
         assert_kind_of Post, relation.first
       end
     end
+  end
+
+  def test_in_batches_enumerator_should_pass_by_parameter
+    initials_order_names = Name.order("initials asc")
+
+    names = []
+    Name.in_batches(of: 1, by: :initials).each do |batch|
+      names.concat(batch)
+    end
+
+    assert_equal initials_order_names.map(&:initials), names.map(&:initials)
   end
 
   def test_in_batches_relations_should_not_overlap_with_each_other
