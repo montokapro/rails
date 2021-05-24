@@ -1,0 +1,29 @@
+alice_carol:
+  initials: ac
+  first_name: alice
+  last_name: carol
+
+alice_bob:
+  initials: ab
+  first_name: alice
+  last_name: bob
+
+bob_carol:
+  initials: bc
+  first_name: bob
+  last_name: carol
+
+bob_alice:
+  initials: ba
+  first_name: bob
+  last_name: alice
+
+carol_bob:
+  initials: cb
+  first_name: carol
+  last_name: bob
+
+carol_alice:
+  initials: ca
+  first_name: carol
+  last_name: alice
