@@ -214,12 +214,18 @@ module ActiveRecord
         raise ArgumentError, ":order must be :asc or :desc, got #{order.inspect}"
       end
 
-      key = by
-      raise ArgumentError, ":by must be present" unless key.present?
-
       if arel.orders.present?
         act_on_ignored_order(error_on_ignore)
       end
+
+      keys = Array(by)
+      raise ArgumentError, ":by must be present" if keys.empty?
+
+      start = Array(start)
+      raise ArgumentError, "Start length must not exceed by length" if start.length > keys.length
+
+      finish = Array(finish)
+      raise ArgumentError, "Finish length must not exceed by length" if finish.length > keys.length
 
       batch_limit = of
       if limit_value
@@ -227,40 +233,51 @@ module ActiveRecord
         batch_limit = remaining if remaining < batch_limit
       end
 
-      relation = relation.reorder(batch_order(order, key))
+      batch_orders = keys.map do |key|
+        batch_order(order, key)
+      end
 
+      relation = relation.reorder(*batch_orders)
       limit_relation = relation.limit(batch_limit)
-      limit_relation = apply_finish_limit(limit_relation, key, finish, order) if finish
+      limit_relation = apply_finish_limit(limit_relation, keys, finish, order) if !finish.empty?
       limit_relation.skip_query_cache! # Retaining the results in the query cache would undermine the point of batching
 
-      offset = nil
+      offset = []
       loop do
         batch_relation = limit_relation
-        if offset
-          batch_relation = apply_offset_limit(batch_relation, key, offset, order)
-        elsif start
-          batch_relation = apply_start_limit(batch_relation, key, start, order)
+        if !offset.empty?
+          batch_relation = apply_offset_limit(batch_relation, keys, offset, order)
+        elsif !start.empty?
+          batch_relation = apply_start_limit(batch_relation, keys, start, order)
         end
 
         values = if load
-          batch_relation.records.map { |record| record.public_send(key) }
+          batch_relation.records.map do |record|
+            keys.map { |key| record.public_send(key) }
+          end
         else
-          batch_relation.pluck(key)
+          # Pluck handles n-ary arguments differently from unary arguments
+          if keys.many?
+            batch_relation.pluck(*keys)
+          else
+            batch_relation.pluck(*keys).map { |v| [v] }
+          end
         end
 
         break if values.empty?
 
         yielded_relation = relation
-        if offset
-          yielded_relation = apply_offset_limit(yielded_relation, key, offset, order)
-        elsif start
-          yielded_relation = apply_start_limit(yielded_relation, key, start, order)
+
+        if !offset.empty?
+          yielded_relation = apply_offset_limit(yielded_relation, keys, offset, order)
+        elsif !start.empty?
+          yielded_relation = apply_start_limit(yielded_relation, keys, start, order)
         end
 
         offset = values.last
-        raise ArgumentError.new("Iteration key not included in the custom select clause") unless offset
+        raise ArgumentError.new("Iteration key not included in the custom select clause") if offset.include?(nil)
 
-        yielded_relation = apply_finish_limit(yielded_relation, key, offset, order)
+        yielded_relation = apply_finish_limit(yielded_relation, keys, offset, order)
         yielded_relation.load_records(batch_relation.records) if load
         yield yielded_relation
 
@@ -281,22 +298,75 @@ module ActiveRecord
     end
 
     private
-      def apply_limits(relation, key, start, finish, order)
-        relation = apply_start_limit(relation, key, start, order) if start
-        relation = apply_finish_limit(relation, key, finish, order) if finish
+      def apply_limits(relation, keys, start, finish, order)
+        keys = Array(keys)
+
+        start = Array(start)
+        relation = apply_start_limit(relation, keys, start, order) if !start.empty?
+
+        finish = Array(finish)
+        relation = apply_finish_limit(relation, keys, finish, order) if !finish.empty?
+
         relation
       end
 
-      def apply_start_limit(relation, key, start, order)
-        relation.where(predicate_builder[key, start, order == :desc ? :lteq : :gteq])
+      def coerce_array(value)
+        case value
+        when NilClass
+          []
+        when Array
+          value
+        else
+          [value]
+        end
       end
 
-      def apply_finish_limit(relation, key, finish, order)
-        relation.where(predicate_builder[key, finish, order == :desc ? :gteq : :lteq])
+      def apply_start_limit(relation, keys, start, order)
+        apply_limit(relation, keys, start, order == :desc ? :lteq : :gteq)
       end
 
-      def apply_offset_limit(relation, key, start, order)
-        relation.where(predicate_builder[key, start, order == :desc ? :lt : :gt])
+      def apply_finish_limit(relation, keys, finish, order)
+        apply_limit(relation, keys, finish, order == :desc ? :gteq : :lteq)
+      end
+
+      def apply_offset_limit(relation, keys, offset, order)
+        apply_limit(relation, keys, offset, order == :desc ? :lt : :gt)
+      end
+
+      def apply_limit(relation, keys, values, operator)
+        # Zip retains the length of the first array
+        entries = values.zip(keys).reverse
+        relation.where(batch_limit(entries, operator))
+      end
+
+      # Emulates composite row comparison
+      def batch_limit(entries, operator)
+        value, key = entries.first
+
+        node = table[key].public_send(operator, value)
+
+        entries = entries.drop(1)
+
+        entries.each do |value, key|
+          node = node.and(table[key].eq(value))
+        end
+
+        if entries.empty?
+          node
+        else
+          node.or(batch_limit(entries, exclusive(operator)))
+        end
+      end
+
+      def exclusive(operator)
+        case operator
+        when :gteq
+          :gt
+        when :lteq
+          :lt
+        else
+          operator
+        end
       end
 
       def batch_order(order, key)
