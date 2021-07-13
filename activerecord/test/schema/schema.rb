@@ -1263,6 +1263,14 @@ ActiveRecord::Schema.define do
     t.integer :id
     t.datetime :created_at
   end
+
+  create_table :names, force: true do |t|
+    t.string :initials
+    t.string :first_name
+    t.string :last_name
+    t.index :initials, unique: true
+    t.index [:last_name, :first_name], unique: true
+  end
 end
 
 Course.connection.create_table :courses, force: true do |t|
