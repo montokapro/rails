@@ -207,7 +207,7 @@ module ActiveRecord
     def in_batches(of: 1000, start: nil, finish: nil, load: false, error_on_ignore: nil, order: :asc)
       relation = self
       unless block_given?
-        return BatchEnumerator.new(of: of, start: start, finish: finish, by: by, relation: self)
+        return BatchEnumerator.new(of: of, start: start, finish: finish, order: order, relation: self)
       end
 
       order =
