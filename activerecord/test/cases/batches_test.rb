@@ -72,7 +72,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_each_should_raise_if_select_is_set_without_by
     assert_raise(ActiveModel::MissingAttributeError) do
-      Name.select(:id).find_each(batch_size: 1, by: :initials) { |post|
+      Name.select(:id).find_each(batch_size: 1, order: :initials) { |post|
         flunk "should not call this block"
       }
     end
@@ -153,7 +153,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_start_from_the_start_option_with_by
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, start: "ac", by: :initials) do |batch|
+      Name.find_in_batches(batch_size: 1, start: "ac", order: :initials) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -162,7 +162,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_end_at_the_finish_option_with_by
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, finish: "ca", by: :initials) do |batch|
+      Name.find_in_batches(batch_size: 1, finish: "ca", order: :initials) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -171,7 +171,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_start_from_the_start_option_with_by_array
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, start: ["alice", "carol"], by: [:last_name, :first_name]) do |batch|
+      Name.find_in_batches(batch_size: 1, start: ["alice", "carol"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -180,7 +180,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_end_at_the_finish_option_with_by_array
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, finish: ["carol", "alice"], by: [:last_name, :first_name]) do |batch|
+      Name.find_in_batches(batch_size: 1, finish: ["carol", "alice"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -189,7 +189,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_start_from_partial_start_option_with_by_array
     assert_queries(5) do
-      Name.find_in_batches(batch_size: 1, start: ["bob"], by: [:last_name, :first_name]) do |batch|
+      Name.find_in_batches(batch_size: 1, start: ["bob"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -198,7 +198,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_end_at_partial_finish_option_with_by_array
     assert_queries(5) do
-      Name.find_in_batches(batch_size: 1, finish: ["bob"], by: [:last_name, :first_name]) do |batch|
+      Name.find_in_batches(batch_size: 1, finish: ["bob"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -352,7 +352,7 @@ class EachTest < ActiveRecord::TestCase
     start_initials = initials_order_names.second.initials
 
     names = []
-    Name.find_in_batches(batch_size: 1, start: start_initials, by: :initials) do |batch|
+    Name.find_in_batches(batch_size: 1, start: start_initials, order: :initials) do |batch|
       names.concat(batch)
     end
 
@@ -374,7 +374,7 @@ class EachTest < ActiveRecord::TestCase
     start_full_name = to_full_name.call(full_name_order_names.second)
 
     names = []
-    Name.find_in_batches(batch_size: 1, start: start_full_name, by: [:last_name, :first_name]) do |batch|
+    Name.find_in_batches(batch_size: 1, start: start_full_name, order: { last_name: :asc, first_name: :asc }) do |batch|
       names.concat(batch)
     end
 
@@ -391,7 +391,7 @@ class EachTest < ActiveRecord::TestCase
     start_last_name = full_name_order_names.third.last_name
 
     names = []
-    Name.find_in_batches(batch_size: 1, start: start_last_name, by: [:last_name, :first_name]) do |batch|
+    Name.find_in_batches(batch_size: 1, start: start_last_name, order: { last_name: :asc, first_name: :asc }) do |batch|
       names.concat(batch)
     end
 
@@ -400,7 +400,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_use_supplied_columns_as_iteration_key_when_start_is_not_specified
     assert_queries(Name.count + 1) do
-      Name.find_in_batches(batch_size: 1, by: [:last_name, :first_name]) do |batch|
+      Name.find_in_batches(batch_size: 1, order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -669,7 +669,7 @@ class EachTest < ActiveRecord::TestCase
     start_initials = initials_order_names.second.initials
 
     names = []
-    Name.in_batches(of: 1, start: start_initials, by: :initials) do |relation|
+    Name.in_batches(of: 1, start: start_initials, order: :initials) do |relation|
       names.concat(relation)
     end
 
@@ -678,7 +678,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_in_batches_should_use_supplied_column_as_iteration_key_when_start_is_not_specified
     assert_queries(Name.count + 1) do
-      Name.in_batches(of: 1, load: true, by: :initials) do |relation|
+      Name.in_batches(of: 1, load: true, order: :initials) do |relation|
         assert_kind_of ActiveRecord::Relation, relation
         assert_kind_of Name, relation.first
       end
@@ -691,7 +691,7 @@ class EachTest < ActiveRecord::TestCase
     start_full_name = to_full_name.call(full_name_order_names.second)
 
     names = []
-    Name.in_batches(of: 1, start: start_full_name, by: [:last_name, :first_name]) do |relation|
+    Name.in_batches(of: 1, start: start_full_name, order: { last_name: :asc, first_name: :asc }) do |relation|
       names.concat(relation)
     end
 
@@ -708,7 +708,7 @@ class EachTest < ActiveRecord::TestCase
     start_last_name = full_name_order_names.third.last_name
 
     names = []
-    Name.in_batches(of: 1, start: start_last_name, by: [:last_name, :first_name]) do |relation|
+    Name.in_batches(of: 1, start: start_last_name, order: { last_name: :asc, first_name: :asc }) do |relation|
       names.concat(relation)
     end
 
@@ -717,7 +717,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_in_batches_should_use_supplied_columns_as_iteration_key_when_start_is_not_specified
     assert_queries(Name.count + 1) do
-      Name.in_batches(of: 1, load: true, by: [:last_name, :first_name]) do |relation|
+      Name.in_batches(of: 1, load: true, order: { last_name: :asc, first_name: :asc }) do |relation|
         assert_kind_of ActiveRecord::Relation, relation
         assert_kind_of Name, relation.first
       end
@@ -741,7 +741,7 @@ class EachTest < ActiveRecord::TestCase
     initials_order_names = Name.order("initials asc")
 
     names = []
-    Name.in_batches(of: 1, by: :initials).each do |batch|
+    Name.in_batches(of: 1, order: :initials).each do |batch|
       names.concat(batch)
     end
 
