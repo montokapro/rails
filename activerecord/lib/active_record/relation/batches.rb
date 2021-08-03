@@ -66,15 +66,15 @@ module ActiveRecord
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
-    def find_each(start: nil, finish: nil, batch_size: 1000, error_on_ignore: nil, order: :asc, by: primary_key)
+    def find_each(start: nil, finish: nil, batch_size: 1000, error_on_ignore: nil, order: :asc)
       if block_given?
-        find_in_batches(start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order, by: by) do |records|
+        find_in_batches(start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order) do |records|
           records.each { |record| yield record }
         end
       else
-        enum_for(:find_each, start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order, by: by) do
+        enum_for(:find_each, start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order) do
           relation = self
-          apply_limits(relation, by, start, finish, order).size
+          apply_limits(relation, start, finish, order).size
         end
       end
     end
@@ -127,16 +127,16 @@ module ActiveRecord
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
-    def find_in_batches(start: nil, finish: nil, batch_size: 1000, error_on_ignore: nil, order: :asc, by: primary_key)
+    def find_in_batches(start: nil, finish: nil, batch_size: 1000, error_on_ignore: nil, order: :asc)
       relation = self
       unless block_given?
-        return to_enum(:find_in_batches, start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order, by: by) do
-          total = apply_limits(relation, by, start, finish, order).size
+        return to_enum(:find_in_batches, start: start, finish: finish, batch_size: batch_size, error_on_ignore: error_on_ignore, order: order) do
+          total = apply_limits(relation, start, finish, order).size
           (total - 1).div(batch_size) + 1
         end
       end
 
-      in_batches(of: batch_size, start: start, finish: finish, load: true, error_on_ignore: error_on_ignore, order: order, by: by) do |batch|
+      in_batches(of: batch_size, start: start, finish: finish, load: true, error_on_ignore: error_on_ignore, order: order) do |batch|
         yield batch.to_a
       end
     end
@@ -219,7 +219,7 @@ module ActiveRecord
         when Hash
           validate_order_args([order])
           raise ArgumentError, ":order length must be at least one" if order.length == 0
-          # TODO: downcase, symbolize dir
+          order.map_values { |v| v.downcase.to_sym }
         else
           raise ArgumentError, ":order must be :asc, :desc, or a valid format, got #{order.inspect}"
         end
@@ -259,11 +259,11 @@ module ActiveRecord
 
         values = if load
           batch_relation.records.map do |record|
-            keys.map { |key| record.public_send(key) }
+            order.keys.map { |key| record.public_send(key) }
           end
         else
           # Pluck handles n-ary arguments differently from unary arguments
-          if keys.many?
+          if order.many?
             batch_relation.pluck(*order.keys)
           else
             batch_relation.pluck(*order.keys).map { |v| [v] }
@@ -315,42 +315,33 @@ module ActiveRecord
       end
 
       def apply_start_limit(relation, start, order)
-        # operator_enumerator = Enumerator.new do |y|
-        #   y << ->(dir) { dir == :desc ? :lteq : :gteq }
-        #   loop do
-        #     y << ->(dir) { dir == :desc ? :lt : :gt }
-        #   end
-        # end
-        first_operator = ->(dir) { dir == :desc ? :lteq : :gteq }
-        next_operator = ->(dir) { dir == :desc ? :lt : :gt }
-        apply_limit(relation, start, order, first_operator, next_operator)
+        operators = Enumerator.new do |y|
+          y.yield ->(dir) { dir == :desc ? :lteq : :gteq }
+          loop { y.yield ->(dir) { dir == :desc ? :lt : :gt } }
+        end
+        apply_limit(relation, start, order, operators)
       end
 
       def apply_finish_limit(relation, finish, order)
-        first_operator = ->(dir) { dir == :desc ? :gteq : :lteq }
-        next_operator = ->(dir) { dir == :desc ? :gt : :lt }
-        apply_limit(relation, finish, order, first_operator, next_operator)
+        operators = Enumerator.new do |y|
+          y.yield ->(dir) { dir == :desc ? :gteq : :lteq }
+          loop { y.yield ->(dir) { dir == :desc ? :gt : :lt } }
+        end
+        apply_limit(relation, finish, order, operators)
       end
 
       def apply_offset_limit(relation, offset, order)
-        operator = ->(dir) { dir == :desc ? :lt : :gt }
-        apply_limit(relation, offset, order, operator, operator)
+        operators = Enumerator.new do |y|
+          loop { y.yield ->(dir) { dir == :desc ? :lt : :gt } }
+        end
+        apply_limit(relation, offset, order, operators)
       end
 
-      def apply_limit(relation, values, order, first_operator, next_operator)
-        first = true
-
+      def apply_limit(relation, values, order, operators)
         # Zip retains the length of the first array
         entries = values.zip(order).reverse.map do |value, key|
           field, dir = key
-
-          operator = if (first)
-            first = false
-            first_operator.call(dir)
-          else
-            next_operator.call(dir)
-          end
-
+          operator = operators.next.call(dir)
           [field, operator, value]
         end
         relation.where(batch_limit(entries))
@@ -364,7 +355,7 @@ module ActiveRecord
 
         entries = entries.drop(1)
 
-        entries.each do |field, operator, value|
+        entries.each do |field, _operator, value|
           node = node.and(table[field].eq(value))
         end
 

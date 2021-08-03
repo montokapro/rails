@@ -5,12 +5,12 @@ module ActiveRecord
     class BatchEnumerator
       include Enumerable
 
-      def initialize(of: 1000, start: nil, finish: nil, by: primary_key, relation:) #:nodoc:
+      def initialize(of: 1000, start: nil, finish: nil, order: :asc, relation:) #:nodoc:
         @of       = of
         @relation = relation
         @start = start
         @finish = finish
-        @by = by
+        @order = order
       end
 
       # The primary key value from which the BatchEnumerator starts, inclusive of the value.
@@ -22,8 +22,8 @@ module ActiveRecord
       # The relation from which the BatchEnumerator yields batches.
       attr_reader :relation
 
-      # The key by which the BatchEnumerator iterates.
-      attr_reader :by
+      # The order by which the BatchEnumerator iterates.
+      attr_reader :order
 
       # The size of the batches yielded by the BatchEnumerator.
       def batch_size
@@ -54,7 +54,7 @@ module ActiveRecord
       def each_record
         return to_enum(:each_record) unless block_given?
 
-        @relation.to_enum(:in_batches, of: @of, start: @start, finish: @finish, load: true).each do |relation|
+        @relation.to_enum(:in_batches, of: @of, start: @start, finish: @finish, order: @order, load: true).each do |relation|
           relation.records.each { |record| yield record }
         end
       end
@@ -94,7 +94,7 @@ module ActiveRecord
       #     relation.update_all(awesome: true)
       #   end
       def each
-        enum = @relation.to_enum(:in_batches, of: @of, start: @start, finish: @finish, load: false, by: by)
+        enum = @relation.to_enum(:in_batches, of: @of, start: @start, finish: @finish, order: @order, load: false)
         return enum.each { |relation| yield relation } if block_given?
         enum
       end
