@@ -204,28 +204,35 @@ module ActiveRecord
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
-    def in_batches(of: 1000, start: nil, finish: nil, load: false, error_on_ignore: nil, order: :asc, by: primary_key)
+    def in_batches(of: 1000, start: nil, finish: nil, load: false, error_on_ignore: nil, order: :asc)
       relation = self
       unless block_given?
         return BatchEnumerator.new(of: of, start: start, finish: finish, by: by, relation: self)
       end
 
-      unless [:asc, :desc].include?(order)
-        raise ArgumentError, ":order must be :asc or :desc, got #{order.inspect}"
-      end
+      order =
+        case order
+        when :asc, :desc
+          { primary_key => order }
+        when Symbol
+          { order => :asc }
+        when Hash
+          validate_order_args([order])
+          raise ArgumentError, ":order length must be at least one" if order.length == 0
+          # TODO: downcase, symbolize dir
+        else
+          raise ArgumentError, ":order must be :asc, :desc, or a valid format, got #{order.inspect}"
+        end
 
       if arel.orders.present?
         act_on_ignored_order(error_on_ignore)
       end
 
-      keys = Array(by)
-      raise ArgumentError, ":by must be present" if keys.empty?
-
       start = Array(start)
-      raise ArgumentError, "Start length must not exceed by length" if start.length > keys.length
+      raise ArgumentError, ":start length must not exceed order length" if start.length > order.length
 
       finish = Array(finish)
-      raise ArgumentError, "Finish length must not exceed by length" if finish.length > keys.length
+      raise ArgumentError, ":finish length must not exceed order length" if finish.length > order.length
 
       batch_limit = of
       if limit_value
@@ -233,21 +240,21 @@ module ActiveRecord
         batch_limit = remaining if remaining < batch_limit
       end
 
-      batch_orders = keys.map do |key|
-        batch_order(order, key)
+      batch_orders = order.map do |field, dir|
+        batch_order(field, dir)
       end
 
       limit_relation = relation.reorder(*batch_orders).limit(batch_limit)
-      limit_relation = apply_finish_limit(limit_relation, keys, finish, order) if !finish.empty?
+      limit_relation = apply_finish_limit(limit_relation, finish, order) if !finish.empty?
       limit_relation.skip_query_cache! # Retaining the results in the query cache would undermine the point of batching
 
       offset = []
       loop do
         batch_relation = limit_relation
         if !offset.empty?
-          batch_relation = apply_offset_limit(batch_relation, keys, offset, order)
+          batch_relation = apply_offset_limit(batch_relation, offset, order)
         elsif !start.empty?
-          batch_relation = apply_start_limit(batch_relation, keys, start, order)
+          batch_relation = apply_start_limit(batch_relation, start, order)
         end
 
         values = if load
@@ -257,9 +264,9 @@ module ActiveRecord
         else
           # Pluck handles n-ary arguments differently from unary arguments
           if keys.many?
-            batch_relation.pluck(*keys)
+            batch_relation.pluck(*order.keys)
           else
-            batch_relation.pluck(*keys).map { |v| [v] }
+            batch_relation.pluck(*order.keys).map { |v| [v] }
           end
         end
 
@@ -268,15 +275,15 @@ module ActiveRecord
         yielded_relation = relation
 
         if !offset.empty?
-          yielded_relation = apply_offset_limit(yielded_relation, keys, offset, order)
+          yielded_relation = apply_offset_limit(yielded_relation, offset, order)
         elsif !start.empty?
-          yielded_relation = apply_start_limit(yielded_relation, keys, start, order)
+          yielded_relation = apply_start_limit(yielded_relation, start, order)
         end
 
         offset = values.last
         raise ArgumentError.new("Iteration key not included in the custom select clause") if offset.include?(nil)
 
-        yielded_relation = apply_finish_limit(yielded_relation, keys, offset, order)
+        yielded_relation = apply_finish_limit(yielded_relation, offset, order)
         yielded_relation.load_records(batch_relation.records) if load
         yield yielded_relation
 
@@ -297,79 +304,79 @@ module ActiveRecord
     end
 
     private
-      def apply_limits(relation, keys, start, finish, order)
-        keys = Array(keys)
-
+      def apply_limits(relation, start, finish, order)
         start = Array(start)
-        relation = apply_start_limit(relation, keys, start, order) if !start.empty?
+        relation = apply_start_limit(relation, start, order) if !start.empty?
 
         finish = Array(finish)
-        relation = apply_finish_limit(relation, keys, finish, order) if !finish.empty?
+        relation = apply_finish_limit(relation, finish, order) if !finish.empty?
 
         relation
       end
 
-      def coerce_array(value)
-        case value
-        when NilClass
-          []
-        when Array
-          value
-        else
-          [value]
-        end
+      def apply_start_limit(relation, start, order)
+        # operator_enumerator = Enumerator.new do |y|
+        #   y << ->(dir) { dir == :desc ? :lteq : :gteq }
+        #   loop do
+        #     y << ->(dir) { dir == :desc ? :lt : :gt }
+        #   end
+        # end
+        first_operator = ->(dir) { dir == :desc ? :lteq : :gteq }
+        next_operator = ->(dir) { dir == :desc ? :lt : :gt }
+        apply_limit(relation, start, order, first_operator, next_operator)
       end
 
-      def apply_start_limit(relation, keys, start, order)
-        apply_limit(relation, keys, start, order == :desc ? :lteq : :gteq)
+      def apply_finish_limit(relation, finish, order)
+        first_operator = ->(dir) { dir == :desc ? :gteq : :lteq }
+        next_operator = ->(dir) { dir == :desc ? :gt : :lt }
+        apply_limit(relation, finish, order, first_operator, next_operator)
       end
 
-      def apply_finish_limit(relation, keys, finish, order)
-        apply_limit(relation, keys, finish, order == :desc ? :gteq : :lteq)
+      def apply_offset_limit(relation, offset, order)
+        operator = ->(dir) { dir == :desc ? :lt : :gt }
+        apply_limit(relation, offset, order, operator, operator)
       end
 
-      def apply_offset_limit(relation, keys, offset, order)
-        apply_limit(relation, keys, offset, order == :desc ? :lt : :gt)
-      end
+      def apply_limit(relation, values, order, first_operator, next_operator)
+        first = true
 
-      def apply_limit(relation, keys, values, operator)
         # Zip retains the length of the first array
-        entries = values.zip(keys).reverse
-        relation.where(batch_limit(entries, operator))
+        entries = values.zip(order).reverse.map do |value, key|
+          field, dir = key
+
+          operator = if (first)
+            first = false
+            first_operator.call(dir)
+          else
+            next_operator.call(dir)
+          end
+
+          [field, operator, value]
+        end
+        relation.where(batch_limit(entries))
       end
 
       # Emulates composite row comparison
-      def batch_limit(entries, operator)
-        value, key = entries.first
+      def batch_limit(entries)
+        field, operator, value = entries.first
 
-        node = table[key].public_send(operator, value)
+        node = table[field].public_send(operator, value)
 
         entries = entries.drop(1)
 
-        entries.each do |value, key|
-          node = node.and(table[key].eq(value))
+        entries.each do |field, operator, value|
+          node = node.and(table[field].eq(value))
         end
 
         if entries.empty?
           node
         else
-          node.or(batch_limit(entries, exclusive(operator)))
+          node.or(batch_limit(entries))
         end
       end
 
-      def exclusive(operator)
-        case operator
-        when :gteq
-          :gt
-        when :lteq
-          :lt
-        else
-          operator
-        end
-      end
-
-      def batch_order(order, key)
-        table[key].public_send(order)
+      def batch_order(field, dir)
+        table[field].public_send(dir)
       end
 
       def act_on_ignored_order(error_on_ignore)
