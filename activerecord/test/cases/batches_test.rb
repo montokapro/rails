@@ -80,7 +80,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_each_should_execute_if_by_is_in_select
     assert_queries(4) do
-      Name.select("initials, first_name, last_name").find_each(batch_size: 2, by: :initials) do |name|
+      Name.select("initials, first_name, last_name").find_each(batch_size: 2, order: :initials) do |name|
         assert_kind_of Name, name
       end
     end
@@ -245,10 +245,10 @@ class EachTest < ActiveRecord::TestCase
 
   def test_each_should_raise_if_by_is_missing
     assert_raise(ArgumentError) do
-      Post.select(:title).find_each(batch_size: 1, by: nil) { |post|
+      Post.select(:title).find_each(batch_size: 1, order: nil) { |post|
         flunk "should not call this block"
       }
-      Post.select(:title).find_each(batch_size: 1, by: "") { |post|
+      Post.select(:title).find_each(batch_size: 1, order: "") { |post|
         flunk "should not call this block"
       }
     end
@@ -361,7 +361,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_use_supplied_column_as_iteration_key_when_start_is_not_specified
     assert_queries(Name.count + 1) do
-      Name.find_in_batches(batch_size: 1, by: :initials) do |batch|
+      Name.find_in_batches(batch_size: 1, order: :initials) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end

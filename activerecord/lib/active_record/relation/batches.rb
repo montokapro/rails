@@ -219,7 +219,7 @@ module ActiveRecord
         when Hash
           validate_order_args([order])
           raise ArgumentError, ":order length must be at least one" if order.length == 0
-          order.map_values { |v| v.downcase.to_sym }
+          order.transform_values { |v| v.downcase.to_sym }
         else
           raise ArgumentError, ":order must be :asc, :desc, or a valid format, got #{order.inspect}"
         end
