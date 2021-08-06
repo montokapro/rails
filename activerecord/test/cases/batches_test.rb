@@ -171,7 +171,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_start_from_the_start_option_with_order_hash
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, start: ["alice", "carol"], order: { last_name: :asc, first_name: :desc }) do |batch|
+      Name.find_in_batches(batch_size: 1, start: ["alice", "alice"], order: { last_name: :asc, first_name: :desc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
@@ -180,7 +180,7 @@ class EachTest < ActiveRecord::TestCase
 
   def test_find_in_batches_should_end_at_the_finish_option_with_order_hash
     assert_queries(6) do
-      Name.find_in_batches(batch_size: 1, finish: ["carol", "alice"], order: { last_name: :asc, first_name: :desc }) do |batch|
+      Name.find_in_batches(batch_size: 1, finish: ["carol", "carol"], order: { last_name: :asc, first_name: :desc }) do |batch|
         assert_kind_of Array, batch
         assert_kind_of Name, batch.first
       end
