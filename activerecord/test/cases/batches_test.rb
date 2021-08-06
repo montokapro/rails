@@ -237,14 +237,6 @@ class EachTest < ActiveRecord::TestCase
 
   def test_each_should_raise_if_order_is_invalid
     assert_raise(ArgumentError) do
-      Post.select(:title).find_each(batch_size: 1, order: :invalid) { |post|
-        flunk "should not call this block"
-      }
-    end
-  end
-
-  def test_each_should_raise_if_by_is_missing
-    assert_raise(ArgumentError) do
       Post.select(:title).find_each(batch_size: 1, order: nil) { |post|
         flunk "should not call this block"
       }
