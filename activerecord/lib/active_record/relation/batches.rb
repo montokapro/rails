@@ -210,19 +210,7 @@ module ActiveRecord
         return BatchEnumerator.new(of: of, start: start, finish: finish, order: order, relation: self)
       end
 
-      order =
-        case order
-        when :asc, :desc
-          { primary_key => order }
-        when Symbol
-          { order => :asc }
-        when Hash
-          validate_order_args([order])
-          raise ArgumentError, ":order length must be at least one" if order.length == 0
-          order.transform_values { |v| v.downcase.to_sym }
-        else
-          raise ArgumentError, ":order must be :asc, :desc, or a valid format, got #{order.inspect}"
-        end
+      order = format_order(order)
 
       if arel.orders.present?
         act_on_ignored_order(error_on_ignore)
@@ -305,6 +293,8 @@ module ActiveRecord
 
     private
       def apply_limits(relation, start, finish, order)
+        order = format_order(order)
+
         start = Array(start)
         relation = apply_start_limit(relation, start, order) if !start.empty?
 
@@ -368,6 +358,21 @@ module ActiveRecord
 
       def batch_order(field, dir)
         table[field].public_send(dir)
+      end
+
+      def format_order(order)
+        case order
+        when :asc, :desc
+          { primary_key => order }
+        when Symbol
+          { order => :asc }
+        when Hash
+          validate_order_args([order])
+          raise ArgumentError, ":order length must be at least one" if order.length == 0
+          order.transform_values { |v| v.downcase.to_sym }
+        else
+          raise ArgumentError, ":order must be :asc, :desc, or a valid format, got #{order.inspect}"
+        end
       end
 
       def act_on_ignored_order(error_on_ignore)
