@@ -1,3 +1,4 @@
+# coding: utf-8
 # frozen_string_literal: true
 
 ActiveRecord::Schema.define do
@@ -1269,7 +1270,7 @@ ActiveRecord::Schema.define do
     t.string :first_name
     t.string :last_name
     t.index :initials, unique: true
-    t.index [:last_name, :first_name], unique: true
+    t.index { last_name: :asc, first_name: :desc }, unique: true
   end
 end
 
