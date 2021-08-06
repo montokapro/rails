@@ -70,7 +70,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_each_should_raise_if_select_is_set_without_by
+  def test_each_should_raise_if_select_is_set_without_order
     assert_raise(ActiveModel::MissingAttributeError) do
       Name.select(:id).find_each(batch_size: 1, order: :initials) { |post|
         flunk "should not call this block"
@@ -78,7 +78,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_each_should_execute_if_by_is_in_select
+  def test_each_should_execute_if_order_is_in_select
     assert_queries(4) do
       Name.select("initials, first_name, last_name").find_each(batch_size: 2, order: :initials) do |name|
         assert_kind_of Name, name
@@ -151,7 +151,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_start_from_the_start_option_with_by
+  def test_find_in_batches_should_start_from_the_start_option_with_order_symbol
     assert_queries(6) do
       Name.find_in_batches(batch_size: 1, start: "ac", order: :initials) do |batch|
         assert_kind_of Array, batch
@@ -160,7 +160,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_end_at_the_finish_option_with_by
+  def test_find_in_batches_should_end_at_the_finish_option_with_order_symbol
     assert_queries(6) do
       Name.find_in_batches(batch_size: 1, finish: "ca", order: :initials) do |batch|
         assert_kind_of Array, batch
@@ -169,7 +169,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_start_from_the_start_option_with_by_array
+  def test_find_in_batches_should_start_from_the_start_option_with_order_hash
     assert_queries(6) do
       Name.find_in_batches(batch_size: 1, start: ["alice", "carol"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
@@ -178,7 +178,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_end_at_the_finish_option_with_by_array
+  def test_find_in_batches_should_end_at_the_finish_option_with_order_hash
     assert_queries(6) do
       Name.find_in_batches(batch_size: 1, finish: ["carol", "alice"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
@@ -187,7 +187,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_start_from_partial_start_option_with_by_array
+  def test_find_in_batches_should_start_from_partial_start_option_with_order_hash
     assert_queries(5) do
       Name.find_in_batches(batch_size: 1, start: ["bob"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
@@ -196,7 +196,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_find_in_batches_should_end_at_partial_finish_option_with_by_array
+  def test_find_in_batches_should_end_at_partial_finish_option_with_order_hash
     assert_queries(5) do
       Name.find_in_batches(batch_size: 1, finish: ["bob"], order: { last_name: :asc, first_name: :asc }) do |batch|
         assert_kind_of Array, batch
@@ -729,7 +729,7 @@ class EachTest < ActiveRecord::TestCase
     end
   end
 
-  def test_in_batches_enumerator_should_pass_by_parameter
+  def test_in_batches_enumerator_should_pass_order_parameter
     initials_order_names = Name.order("initials asc")
 
     names = []
