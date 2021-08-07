@@ -360,41 +360,31 @@ module ActiveRecord
       end
 
       def apply_start_limit(relation, start, order)
-        operators = Enumerator.new do |y|
-          y.yield ->(dir) { dir == :desc ? :lteq : :gteq }
-          loop { y.yield ->(dir) { dir == :desc ? :lt : :gt } }
-        end
-        apply_limit(relation, start, order, operators)
+        apply_limit(relation, start, order, false, true)
       end
 
       def apply_finish_limit(relation, finish, order)
-        operators = Enumerator.new do |y|
-          y.yield ->(dir) { dir == :desc ? :gteq : :lteq }
-          loop { y.yield ->(dir) { dir == :desc ? :gt : :lt } }
-        end
-        apply_limit(relation, finish, order, operators)
+        apply_limit(relation, finish, order, true, true)
       end
 
       def apply_offset_limit(relation, offset, order)
-        operators = Enumerator.new do |y|
-          loop { y.yield ->(dir) { dir == :desc ? :lt : :gt } }
-        end
-        apply_limit(relation, offset, order, operators)
+        apply_limit(relation, offset, order, false, false)
       end
 
-      def apply_limit(relation, values, order, operators)
+      def apply_limit(relation, values, order, reverse, inclusive)
         # Zip retains the length of the first array
         entries = values.zip(order).reverse.map do |value, key|
           field, dir = key
-          operator = operators.next.call(dir)
-          [field, operator, value]
+          direction = dir ^ reverse
+          [field, direction, value]
         end
-        relation.where(batch_limit(entries))
+        relation.where(batch_limit(entries, inclusive))
       end
 
       # Emulates composite row comparison
-      def batch_limit(entries)
-        field, operator, value = entries.first
+      def batch_limit(entries, inclusive)
+        field, direction, value = entries.first
+        operator = order_operator(direction, inclusive)
 
         node = table[field].public_send(operator, value)
 
@@ -407,7 +397,15 @@ module ActiveRecord
         if entries.empty?
           node
         else
-          node.or(batch_limit(entries))
+          node.or(batch_limit(entries, false))
+        end
+      end
+
+      def order_operator(forward, inclusive)
+        if forward
+          inclusive ? :lteq : :lt
+        else
+          inclusive ? :gteq : :gt
         end
       end
 
