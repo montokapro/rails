@@ -375,7 +375,7 @@ module ActiveRecord
         # Zip retains the length of the first array
         entries = values.zip(order).reverse.map do |value, key|
           field, dir = key
-          direction = dir ^ reverse
+          direction = (dir == :asc) ^ reverse
           [field, direction, value]
         end
         relation.where(batch_limit(entries, inclusive))
