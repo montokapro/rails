@@ -37,8 +37,7 @@ module ActiveRecord
     # * <tt>:finish</tt> - Specifies the iteration key value to end at, inclusive of the value.
     # * <tt>:error_on_ignore</tt> - Overrides the application config to specify if an error should be raised when
     #   an order is present in the relation.
-    # * <tt>:order</tt> - Specifies the iteration key order (can be :asc or :desc). Defaults to :asc.
-    # * <tt>:by</tt> - Specifies the iteration key. Defaults to the primary key.
+    # * <tt>:order</tt> - Specifies the iteration key order. Defaults to :asc.
     #
     # Limits are honored, and if present there is no requirement for the batch
     # size: it can be less than, equal to, or greater than the limit.
@@ -59,10 +58,30 @@ module ActiveRecord
     #     person.party_all_night!
     #   end
     #
-    # NOTE: Order can be ascending (:asc) or descending (:desc). It is automatically set to
-    # ascending on the iteration key (ie "id ASC").
+    # The +order+ option defaults to ascending on the iteration key (ie "id ASC").
     # This also means that this method only works when the iteration key is
-    # orderable (e.g. an integer or string).
+    # orderable (e.g. an integer or string), and uniquely identifies the record.
+    # Order can be ascending (:asc), descending (:desc), a symbol (:id), or a hash
+    # ({ first_name: :asc, last_name: :desc }). Note that any iteration order
+    # can be made unique by appending the primary key, if one exists.
+    #
+    #   # Process more recently updated records first
+    #   Person.find_each(order: { updated_at: :desc, id: :asc }) do |person|
+    #     person.party_all_night!
+    #   end
+    #
+    # When an +order+ is combined with a +start+ and +finish+ option, it may be
+    # desirable to define a start and finish that covers some or all of the
+    # iteration key.
+    #
+    #   # Note that start and finish are valid despite missing the id parameter.
+    #   Person.find_each(
+    #     start: [85, "Alice"],  # age, name
+    #     finish: 15,            # age
+    #     order: { age: :desc, name: :asc, id: :desc }
+    #   ) do |person|
+    #     person.party_all_night!
+    #   end
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
@@ -103,8 +122,7 @@ module ActiveRecord
     # * <tt>:finish</tt> - Specifies the iteration key value to end at, inclusive of the value.
     # * <tt>:error_on_ignore</tt> - Overrides the application config to specify if an error should be raised when
     #   an order is present in the relation.
-    # * <tt>:order</tt> - Specifies the iteration key order (can be :asc or :desc). Defaults to :asc.
-    # * <tt>:by</tt> - Specifies the iteration key. Defaults to the primary key.
+    # * <tt>:order</tt> - Specifies the iteration key order. Defaults to :asc.
     #
     # Limits are honored, and if present there is no requirement for the batch
     # size: it can be less than, equal to, or greater than the limit.
@@ -120,10 +138,30 @@ module ActiveRecord
     #     group.each { |person| person.party_all_night! }
     #   end
     #
-    # NOTE: Order can be ascending (:asc) or descending (:desc). It is automatically set to
-    # ascending on the iteration key (ie "id ASC").
+    # The +order+ option defaults to ascending on the iteration key (ie "id ASC").
     # This also means that this method only works when the iteration key is
-    # orderable (e.g. an integer or string).
+    # orderable (e.g. an integer or string), and uniquely identifies the record.
+    # Order can be ascending (:asc), descending (:desc), a symbol (:id), or a hash
+    # ({ first_name: :asc, last_name: :desc }). Note that any iteration order
+    # can be made unique by appending the primary key, if one exists.
+    #
+    #   # Process more recently updated records first
+    #   Person.find_in_batches(order: { updated_at: :desc, id: :asc }) do |group|
+    #     group.each { |person| person.party_all_night! }
+    #   end
+    #
+    # When an +order+ is combined with a +start+ and +finish+ option, it may be
+    # desirable to define a start and finish that covers some or all of the
+    # iteration key.
+    #
+    #   # Note that start and finish are valid despite missing the id parameter.
+    #   Person.find_in_batches(
+    #     start: [85, "Alice"],  # age, name
+    #     finish: 15,            # age
+    #     order: { age: :desc, name: :asc, id: :desc }
+    #   ) do |group|
+    #     group.each { |person| person.party_all_night! }
+    #   end
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
@@ -170,7 +208,6 @@ module ActiveRecord
     # * <tt>:error_on_ignore</tt> - Overrides the application config to specify if an error should be raised when
     #   an order is present in the relation.
     # * <tt>:order</tt> - Specifies the iteration key order (can be :asc or :desc). Defaults to :asc.
-    # * <tt>:by</tt> - Specifies the iteration key. Defaults to the primary key.
     #
     # Limits are honored, and if present there is no requirement for the batch
     # size, it can be less than, equal, or greater than the limit.
@@ -197,10 +234,28 @@ module ActiveRecord
     #
     #   Person.in_batches.each_record(&:party_all_night!)
     #
-    # NOTE: Order can be ascending (:asc) or descending (:desc). It is automatically set to
-    # ascending on the iteration key ("id ASC").
+    # The +order+ option defaults to ascending on the iteration key (ie "id ASC").
     # This also means that this method only works when the iteration key is
-    # orderable (e.g. an integer or string).
+    # orderable (e.g. an integer or string), and uniquely identifies the record.
+    # Order can be ascending (:asc), descending (:desc), a symbol (:id), or a hash
+    # ({ first_name: :asc, last_name: :desc }). Note that any iteration order
+    # can be made unique by appending the primary key, if one exists.
+    #
+    #   # Delete more recently updated records first
+    #   Person.in_batches(order: { updated_at: :desc, id: :asc }).delete_all
+    #
+    # When an +order+ is combined with a +start+ and +finish+ option, it may be
+    # desirable to define a start and finish that covers some or all of the
+    # iteration key.
+    #
+    #   # Note that start and finish are valid despite missing the id parameter.
+    #   Person.in_batches(
+    #     start: [85, "Alice"],  # age, name
+    #     finish: 15,            # age
+    #     order: { age: :desc, name: :asc, id: :desc }
+    #   ) do |relation|
+    #     relation.update_all(should_party: true)
+    #   end
     #
     # NOTE: By its nature, batch processing is subject to race conditions if
     # other processes are modifying the database.
