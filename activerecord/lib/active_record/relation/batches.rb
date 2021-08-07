@@ -403,9 +403,9 @@ module ActiveRecord
 
       def order_operator(forward, inclusive)
         if forward
-          inclusive ? :lteq : :lt
-        else
           inclusive ? :gteq : :gt
+        else
+          inclusive ? :lteq : :lt
         end
       end
 
