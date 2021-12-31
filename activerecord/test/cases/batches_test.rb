@@ -349,9 +349,9 @@ class EachTest < ActiveRecord::TestCase
   end
 
   def test_in_batches_each_record_should_be_ordered_by_id
-    ids = Post.order("id ASC").pluck(:id)
+    ids = Post.order("id DESC").pluck(:id)
     assert_queries(6) do
-      Post.in_batches(of: 2).each_record.with_index do |post, i|
+      Post.in_batches(of: 2, order: :desc).each_record.with_index do |post, i|
         assert_equal ids[i], post.id
       end
     end
